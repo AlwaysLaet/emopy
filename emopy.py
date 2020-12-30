@@ -1,16 +1,57 @@
 import requests as rq
 from lxml import html
 import re
+from os import path
+import pickle
 
-
-class emopy(object):
-    """**class emopy**
-    For emoji extraction from text using the unicode emoji list found at
+class scrapeEmojis(object):
+    """**class scrapeEmojis**
+    Intended as a parent class with the sole purpose of keeping track
+    of the scraping of emoji-unicode from 
         https://unicode.org/emoji/charts/full-emoji-list.html
     """
-    def __init__(self):
-        self.emojis_re = None
-        self.not_emojis_re = None
+    def __init__(self, emojis_path = 'data/emojis.pk', scrape_anew = False, save_scrape = True):
+        self.emojis_path = emojis_path
+        self.emojis = None
+        self.descrs = None
+        path_exists = path.exists(emojis_path)
+        if path_exists and (not scrape_anew):
+            try:
+                with open(emojis_path, 'rb') as fin:
+                    self.emojis, self.descrs = pickle.load(fin)
+            except Exception as e:
+                ret = str(input(f"Exception {e} thrown. Scrape anew? ([y] or n): ")).lower()
+                if ret in ['n', 'no']:
+                    raise e
+                else:
+                    scrape_anew = True
+        if scrape_anew or (not path_exists):
+            resp = rq.get("https://unicode.org/emoji/charts/full-emoji-list.html")
+            html_tree = html.fromstring(resp.text)
+            emojis = html_tree.xpath('//td[@class="chars"]//text()')
+            descrs = html_tree.xpath('//td[contains(@class,"name")]//text()')
+            self.emojis, self.descrs = zip(*sorted(list(zip(emojis, descrs)), key=lambda x: len(x[0]), reverse=True))
+            if save_scrape:
+                try:
+                    with open(emojis_path, 'wb') as fout:
+                        pickle.dump((self.emojis, self.descrs), fout)
+                except Exception as e:
+                    print(f"Exception {e} thrown while saving scraped data. File may not have been written.")
+            else:
+                print(f"Scraped data not saved due to save_scrape=False in parameters.")
+            
+            
+    
+
+class emopy(scrapeEmojis):
+    """**class emopy**
+    For emoji extraction from text using the emoji list in scrapeEmojis parent class.
+        
+    """
+    def __init__(self, emojis_path = 'data/emojis.pk', scrape_anew = False, save_scrape = True):
+        super().__init__(emojis_path, scrape_anew, save_scrape)
+        self.emojis_re = re.compile(self._create_positive_regex(self.emojis))
+        self.not_emojis_re = re.compile(self._create_negative_regex(self.emojis))
         pass
     
     @staticmethod
@@ -23,11 +64,15 @@ class emopy(object):
         not_emojis_re_str = "[^" + "".join([el.replace("*","\*") for el in emojis]) + "]"
         return re.compile(not_emojis_re_str)
     
-    def text_emojis_from_doc(self, doc):
+    def emojis_descrs_text_from_doc(self, doc):
         extr = self.emojis_re.findall(doc)
-        emojis, descrs = zip(*[(tup[0], self.descrs[tup[1:].index(tup[0])]) for tup in extr])
+        if extr:
+            emojis, descrs = zip(*[(tup[0], self.descrs[tup[1:].index(tup[0])]) for tup in extr])
+        else:
+            emojis, descrs = (), ()
         text = "".join(self.not_emojis_re.findall(doc))
         return emojis, descrs, text
     
-    def text_emojis_from_docs(self, docs):
-        return [self.text_emojis_from_doc(doc) for doc in docs]
+    def emojis_descrs_text_from_docs(self, docs):
+        for doc in docs:
+            yield self.emojis_descrs_text_from_doc(doc)
