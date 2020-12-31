@@ -12,13 +12,13 @@ class scrapeEmojis(object):
     """
     def __init__(self, emojis_path = 'data/emojis.pk', scrape_anew = False, save_scrape = True):
         self.emojis_path = emojis_path
-        self.emojis = None
-        self.descrs = None
+        self.__emojis = None
+        self.__descrs = None
         path_exists = path.exists(emojis_path)
         if path_exists and (not scrape_anew):
             try:
                 with open(emojis_path, 'rb') as fin:
-                    self.emojis, self.descrs = pickle.load(fin)
+                    self.__emojis, self.__descrs = pickle.load(fin)
             except Exception as e:
                 ret = str(input(f"Exception {e} thrown. Scrape anew? ([y] or n): ")).lower()
                 if ret in ['n', 'no']:
@@ -30,7 +30,7 @@ class scrapeEmojis(object):
             html_tree = html.fromstring(resp.text)
             emojis = html_tree.xpath('//td[@class="chars"]//text()')
             descrs = html_tree.xpath('//td[contains(@class,"name")]//text()')
-            self.emojis, self.descrs = zip(*sorted(list(zip(emojis, descrs)), key=lambda x: len(x[0]), reverse=True))
+            self.__emojis, self.__descrs = zip(*sorted(list(zip(emojis, descrs)), key=lambda x: len(x[0]), reverse=True))
             if save_scrape:
                 try:
                     with open(emojis_path, 'wb') as fout:
@@ -40,7 +40,13 @@ class scrapeEmojis(object):
             else:
                 print(f"Scraped data not saved due to save_scrape=False in parameters.")
             
-            
+    @property
+    def emojis(self):
+        return self.__emojis
+    
+    @property
+    def descrs(self):
+        return self.__descrs
     
 
 class emopy(scrapeEmojis):
@@ -50,8 +56,8 @@ class emopy(scrapeEmojis):
     """
     def __init__(self, emojis_path = 'data/emojis.pk', scrape_anew = False, save_scrape = True):
         super().__init__(emojis_path, scrape_anew, save_scrape)
-        self.emojis_re = re.compile(self._create_positive_regex(self.emojis))
-        self.not_emojis_re = re.compile(self._create_negative_regex(self.emojis))
+        self.__emojis_re = re.compile(self._create_positive_regex(self.emojis))
+        self.__not_emojis_re = re.compile(self._create_negative_regex(self.emojis))
         pass
     
     @staticmethod
@@ -63,6 +69,15 @@ class emopy(scrapeEmojis):
     def _create_negative_regex(emojis):
         not_emojis_re_str = "[^" + "".join([el.replace("*","\*") for el in emojis]) + "]"
         return re.compile(not_emojis_re_str)
+    
+    @property
+    def emojis_re(self):
+        return self.__emojis_re
+    
+    @property
+    def not_emojis_re(self):
+        return self.__not_emojis_re
+        
     
     def emojis_descrs_text_from_doc(self, doc):
         extr = self.emojis_re.findall(doc)
